@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 set -e
 
-IMG=${SANDBOX_IMAGE:-sandbox:alma9}
+# lxplus already provides /cvmfs and only gives us rootless podman; everywhere
+# else we assume rootful Docker and mount CVMFS ourselves. Override with
+# SANDBOX_MODE=local|lxplus.
+case "${SANDBOX_MODE:-$(hostname -s)}" in
+  lxplus*) MODE=lxplus ;;
+  *)       MODE=local  ;;
+esac
+
+if [ "$MODE" = lxplus ]; then DEF_IMG=sandbox:alma9-lxplus; else DEF_IMG=sandbox:alma9; fi
+
+IMG=${SANDBOX_IMAGE:-$DEF_IMG}
 REPOS=${SANDBOX_CVMFS_REPOS:-"cvmfs-config.cern.ch sft.cern.ch sft-nightlies.cern.ch atlas.cern.ch atlas-condb.cern.ch atlas-nightlies.cern.ch unpacked.cern.ch"}
 DIR=$(dirname "$(readlink -f "$0")")
-CTX=$DIR/image
+CTX=$DIR/image/$MODE
 RC=$DIR/bashrc.sh
 CLAUDE_MD=$DIR/CLAUDE.md
 
@@ -20,19 +30,34 @@ CUR_HASH=$(docker image inspect -f '{{ index .Config.Labels "sandbox.contenthash
 [ -f "$CLAUDE_MD" ] || { echo "sandbox: missing $CLAUDE_MD"; exit 1; }
 [ -t 0 ] && TTY=-it
 
+if [ "$MODE" = lxplus ]; then
+  # Touch each repo so autofs has it mounted before we take the bind mount --
+  # a repo that is not mounted yet on the host will not appear inside.
+  for r in $REPOS; do ls "/cvmfs/$r" >/dev/null 2>&1 || echo "warning: /cvmfs/$r not available on the host" >&2; done
+  # /tmp (and with it the container storage) is node-local and gets wiped, so
+  # keep the home on AFS instead: the Claude Code login then survives node hops.
+  SBHOME=$HOME/.sandbox-home
+  mkdir -p "$SBHOME/.claude"
+  MODE_ARGS=(-v /cvmfs:/cvmfs:ro,rslave
+             -v "$SBHOME":/home/"$USER"
+             --security-opt label=disable)
+else
+  MODE_ARGS=(--cap-add SYS_ADMIN --device /dev/fuse --security-opt apparmor=unconfined
+             -v sandbox-home:/home/"$USER"
+             -v sandbox-cvmfs:/var/lib/cvmfs
+             -e CVMFS_REPOS="$REPOS")
+fi
+
 ROOTRC_MOUNT=(); [ -f "$HOME/.rootrc" ] && ROOTRC_MOUNT=(-v "$HOME/.rootrc":/home/"$USER"/.rootrc:ro)
 NVIM_MOUNT=(); [ -d "$HOME/.config/nvim" ] && NVIM_MOUNT=(-v "$HOME/.config/nvim":/home/"$USER"/.config/nvim:ro)
 GITCONFIG_MOUNT=(); [ -f "$HOME/.gitconfig" ] && GITCONFIG_MOUNT=(-v "$HOME/.gitconfig":/home/"$USER"/.gitconfig:ro)
 
 exec docker run --rm $TTY --hostname sandbox \
-  --cap-add SYS_ADMIN --device /dev/fuse --security-opt apparmor=unconfined \
   -v "$PWD":/work \
-  -v sandbox-home:/home/"$USER" \
-  -v sandbox-cvmfs:/var/lib/cvmfs \
   -v "$RC":/etc/bashrc_sandbox:ro \
   -v "$CLAUDE_MD":/home/"$USER"/.claude/CLAUDE.md:ro \
+  "${MODE_ARGS[@]}" \
   "${ROOTRC_MOUNT[@]}" "${NVIM_MOUNT[@]}" "${GITCONFIG_MOUNT[@]}" \
   -e HOST_USER="$USER" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
-  -e CVMFS_REPOS="$REPOS" \
   -e TERM="${TERM:-xterm-256color}" \
   "$IMG" "$@"
