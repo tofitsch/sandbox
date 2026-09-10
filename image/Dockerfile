@@ -1,7 +1,7 @@
 FROM almalinux:9
 
 RUN dnf -y install epel-release && \
-    dnf -y install --allowerasing git curl wget vim neovim less tar which procps-ng \
+    dnf -y install git wget vim neovim less tar which procps-ng \
         util-linux findutils make gcc gcc-c++ python3 python3-pip fuse fuse3 man-db && \
     dnf -y install https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest.noarch.rpm && \
     dnf -y install cvmfs cvmfs-config-default && \
