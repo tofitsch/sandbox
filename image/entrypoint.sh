@@ -12,7 +12,7 @@ mkdir -p "$H" && chown "$HOST_UID:$HOST_GID" "$H"
 # --- CVMFS ---
 cat > /etc/cvmfs/default.local <<CFG
 CVMFS_CLIENT_PROFILE=single
-CVMFS_HTTP_PROXY=auto;DIRECT
+CVMFS_HTTP_PROXY=DIRECT
 CVMFS_CACHE_BASE=/var/lib/cvmfs
 CVMFS_QUOTA_LIMIT=20000
 CFG

@@ -11,6 +11,8 @@ CVMFS mounted, current directory as the workdir, your real `$HOME` invisible.
   edits take effect on the next `sandbox` with no rebuild.
 - **Editor config** — `~/.rootrc` and `~/.config/nvim` from the host are mounted read-only into
   the container home, if present. Neovim is installed in the image.
+- **Git config** — `~/.gitconfig` from the host is mounted read-only into the container home, if
+  present.
 - **Claude Code rules** — `CLAUDE.md` in this repo is mounted read-only as the container's global
   `~/.claude/CLAUDE.md`, so it applies to Claude Code for any project run inside the sandbox.
 
