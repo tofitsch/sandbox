@@ -2,7 +2,7 @@
 set -e
 
 IMG=${SANDBOX_IMAGE:-sandbox:alma9}
-REPOS=${SANDBOX_CVMFS_REPOS:-"cvmfs-config.cern.ch sft.cern.ch"}
+REPOS=${SANDBOX_CVMFS_REPOS:-"cvmfs-config.cern.ch sft.cern.ch atlas.cern.ch"}
 DIR=$(dirname "$(readlink -f "$0")")
 CTX=$DIR/image
 RC=$DIR/bashrc.sh

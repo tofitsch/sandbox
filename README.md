@@ -54,17 +54,31 @@ Inside, CVMFS works as usual:
 source /cvmfs/sft.cern.ch/lcg/views/LCG_106/x86_64-el9-gcc13-opt/setup.sh
 ```
 
+## Adding software to the image
+
+Anything installed via `dnf`/`npm`/etc. (as opposed to CVMFS) has to go in `image/Dockerfile`.
+
+```bash
+vim image/Dockerfile   # add e.g. `dnf -y install cmake` to the RUN chain
+sandbox --rebuild       # rebuilds the image, then drops you into a shell
+```
+
+`--rebuild` also works ahead of a specific command: `sandbox --rebuild make -j8`. Existing
+containers aren't affected — only the next `sandbox` invocation picks up the new image. The
+persistent home (`sandbox-home`) and CVMFS cache survive a rebuild since they're separate Docker
+volumes.
+
 ## Config
 
 | Variable | Default |
 |---|---|
-| `SANDBOX_CVMFS_REPOS` | `cvmfs-config.cern.ch sft.cern.ch` |
+| `SANDBOX_CVMFS_REPOS` | `cvmfs-config.cern.ch sft.cern.ch atlas.cern.ch` |
 | `SANDBOX_IMAGE` | `sandbox:alma9` |
 
-Keep `cvmfs-config.cern.ch` first — the others need it to resolve:
+Keep `cvmfs-config.cern.ch` first — the others need it to resolve. Override to add or drop repos:
 
 ```bash
-SANDBOX_CVMFS_REPOS="cvmfs-config.cern.ch sft.cern.ch atlas.cern.ch" sandbox
+SANDBOX_CVMFS_REPOS="cvmfs-config.cern.ch sft.cern.ch" sandbox   # skip atlas.cern.ch
 ```
 
 Reset the persistent home (drops the Claude login): `docker volume rm sandbox-home`
