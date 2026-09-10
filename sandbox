@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -e
+
+IMG=${SANDBOX_IMAGE:-sandbox:alma9}
+REPOS=${SANDBOX_CVMFS_REPOS:-"cvmfs-config.cern.ch sft.cern.ch"}
+DIR=$(dirname "$(readlink -f "$0")")
+CTX=$DIR/image
+RC=$DIR/bashrc.sh
+
+[ "$1" = "--rebuild" ] && { shift; docker build --pull -t "$IMG" "$CTX"; [ $# -eq 0 ] && exit 0; }
+docker image inspect "$IMG" >/dev/null 2>&1 || docker build -t "$IMG" "$CTX"
+
+[ "$PWD" = "$HOME" ] && { echo "sandbox: refusing to mount \$HOME as workdir"; exit 1; }
+[ -f "$RC" ] || { echo "sandbox: missing $RC"; exit 1; }
+[ -t 0 ] && TTY=-it
+
+exec docker run --rm $TTY --hostname sandbox \
+  --cap-add SYS_ADMIN --device /dev/fuse --security-opt apparmor=unconfined \
+  -v "$PWD":/work \
+  -v sandbox-home:/home/"$USER" \
+  -v sandbox-cvmfs:/var/lib/cvmfs \
+  -v "$RC":/etc/bashrc_sandbox:ro \
+  -e HOST_USER="$USER" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+  -e CVMFS_REPOS="$REPOS" \
+  -e TERM="${TERM:-xterm-256color}" \
+  "$IMG" "$@"
