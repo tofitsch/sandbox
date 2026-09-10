@@ -16,12 +16,6 @@ alias grep='grep --color=auto'
 alias ls='ls --color=auto'
 alias pacman='pacman --color=auto'
 
-#make umlauts work properly 
-export LC_ALL=en_US.UTF-8
-export LANG=en_US.UTF-8
-export LANGUAGE=en_US.UTF-8
-
-
 #source local atlas software and cvmfs installation
 export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
 export ALRB_localConfigDir=$HOME/.config/atlasLocalRootBase

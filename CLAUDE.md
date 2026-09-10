@@ -1,0 +1,4 @@
+- Never commit or push anything with git. The user handles that themselves.
+- Don't ask for permission before running shell commands — you're in a disposable sandbox, it's fine.
+- Always ask before changing code.
+- Never build or run the code to verify a fix or change — the user will do that. Only build/run when the user explicitly asks for it.

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /work diff HEAD~1 -- bashrc.sh)",
+      "Read(//cvmfs/**)",
+      "Bash(mount)",
+      "Bash(cvmfs_config stat *)",
+      "Bash(dmesg)"
+    ]
+  }
+}

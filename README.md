@@ -9,12 +9,17 @@ CVMFS mounted, current directory as the workdir, your real `$HOME` invisible.
 - **CVMFS** — mounted at container start, cache kept in the volume `sandbox-cvmfs`.
 - **Shell init** — `bashrc.sh` in this repo is mounted read-only and sourced at every start, so
   edits take effect on the next `sandbox` with no rebuild.
+- **Editor config** — `~/.rootrc` and `~/.config/nvim` from the host are mounted read-only into
+  the container home, if present. Neovim is installed in the image.
+- **Claude Code rules** — `CLAUDE.md` in this repo is mounted read-only as the container's global
+  `~/.claude/CLAUDE.md`, so it applies to Claude Code for any project run inside the sandbox.
 
 ## Layout
 
 ```
 sandbox               # the launcher, goes on your PATH
 bashrc.sh             # sourced in every container shell — put your aliases here
+CLAUDE.md             # global Claude Code rules for every project run inside the sandbox
 image/Dockerfile      # AlmaLinux 9 + CVMFS + Node + Claude Code
 image/entrypoint.sh   # mounts CVMFS, matches your UID, drops privileges
 ```
@@ -43,9 +48,9 @@ copy the script on its own.
 
 ```bash
 cd ~/work/myproject
-sandbox                 # interactive shell (builds the image on first run)
+sandbox                 # interactive shell (builds/rebuilds the image if image/ changed)
 sandbox make -j8        # run one command
-sandbox --rebuild       # rebuild the image after editing the Dockerfile
+sandbox --rebuild       # force a rebuild, e.g. to pick up a new base image
 ```
 
 Inside, CVMFS works as usual:
@@ -60,19 +65,21 @@ Anything installed via `dnf`/`npm`/etc. (as opposed to CVMFS) has to go in `imag
 
 ```bash
 vim image/Dockerfile   # add e.g. `dnf -y install cmake` to the RUN chain
-sandbox --rebuild       # rebuilds the image, then drops you into a shell
+sandbox                 # picks up the change and rebuilds automatically
 ```
 
-`--rebuild` also works ahead of a specific command: `sandbox --rebuild make -j8`. Existing
-containers aren't affected — only the next `sandbox` invocation picks up the new image. The
-persistent home (`sandbox-home`) and CVMFS cache survive a rebuild since they're separate Docker
-volumes.
+`sandbox` hashes every file under `image/` and compares it to a label baked into the last-built
+image; a mismatch (or no image at all) triggers a rebuild before the container starts. `--rebuild`
+forces one unconditionally — useful to pull a fresh base image — and also works ahead of a
+specific command: `sandbox --rebuild make -j8`. Existing containers aren't affected — only the
+next `sandbox` invocation picks up the new image. The persistent home (`sandbox-home`) and CVMFS
+cache survive a rebuild since they're separate Docker volumes.
 
 ## Config
 
 | Variable | Default |
 |---|---|
-| `SANDBOX_CVMFS_REPOS` | `cvmfs-config.cern.ch sft.cern.ch atlas.cern.ch` |
+| `SANDBOX_CVMFS_REPOS` | `cvmfs-config.cern.ch sft.cern.ch sft-nightlies.cern.ch atlas.cern.ch atlas-condb.cern.ch atlas-nightlies.cern.ch unpacked.cern.ch` |
 | `SANDBOX_IMAGE` | `sandbox:alma9` |
 
 Keep `cvmfs-config.cern.ch` first — the others need it to resolve. Override to add or drop repos:
