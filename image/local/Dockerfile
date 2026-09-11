@@ -2,7 +2,7 @@ FROM almalinux:9
 
 RUN dnf -y install epel-release && \
     dnf -y install --allowerasing git wget curl vim neovim less tar which procps-ng \
-        util-linux findutils make gcc gcc-c++ python3 python3-pip fuse fuse3 man-db ranger && \
+        util-linux findutils make gcc gcc-c++ python3 python3-pip fuse fuse3 man-db ranger zathura feh && \
     dnf -y install https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest.noarch.rpm && \
     dnf -y install cvmfs cvmfs-config-default && \
     dnf -y module enable nodejs:20 && dnf -y install nodejs npm && \

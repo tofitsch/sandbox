@@ -131,7 +131,7 @@ fi
 ROOTRC_MOUNT=(); [ -f "$HOME/.rootrc" ] && { ROOTRC_MOUNT=(-v "$HOME/.rootrc":/home/"$USER"/.rootrc:ro); MOUNT_SUMMARY+=("r  $HOME/.rootrc -> ~/.rootrc"); }
 NVIM_MOUNT=(); [ -d "$HOME/.config/nvim" ] && { NVIM_MOUNT=(-v "$HOME/.config/nvim":/home/"$USER"/.config/nvim:ro); MOUNT_SUMMARY+=("r  $HOME/.config/nvim -> ~/.config/nvim"); }
 GITCONFIG_MOUNT=(); [ -f "$HOME/.gitconfig" ] && { GITCONFIG_MOUNT=(-v "$HOME/.gitconfig":/home/"$USER"/.gitconfig:ro); MOUNT_SUMMARY+=("r  $HOME/.gitconfig -> ~/.gitconfig"); }
-RANGER_MOUNT=(); [ -d "$HOME/.config/ranger" ] && { RANGER_MOUNT=(-v "$HOME/.config/ranger":/home/"$USER"/.config/ranger:ro); MOUNT_SUMMARY+=("r  $HOME/.config/ranger -> ~/.config/ranger"); }
+RANGER_MOUNT=(); [ -d "$HOME/.config/ranger" ] && { RANGER_MOUNT=(-v "$HOME/.config/ranger":/home/"$USER"/.config/ranger-host:ro); MOUNT_SUMMARY+=("r  $HOME/.config/ranger -> ~/.config/ranger-host (rc.conf/rifle.conf/scope.sh copied into the writable ~/.config/ranger by the entrypoint; ranger needs to write bookmarks/tagged there itself)"); }
 
 # --- SSH agent forwarding (never the private key itself) ---
 # ssh-add exit codes: 0 = agent has keys, 1 = agent reachable but empty, 2 = no
