@@ -3,7 +3,7 @@ FROM almalinux:9
 # No cvmfs client here: on lxplus /cvmfs is already mounted on the host and is
 # bind-mounted into the container by the launcher.
 RUN dnf -y install epel-release && \
-    dnf -y install --setopt=install_weak_deps=False git wget curl vim neovim less tar which procps-ng \
+    dnf -y install --setopt=install_weak_deps=False --allowerasing git wget curl vim neovim less tar which procps-ng \
         util-linux findutils make gcc gcc-c++ python3 python3-pip man-db ranger && \
     dnf -y module enable nodejs:20 && dnf -y install nodejs npm && \
     npm install -g @anthropic-ai/claude-code && \
