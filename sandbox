@@ -12,7 +12,7 @@ esac
 # Pull -r/-w SRC DST and -h/--help out of the argument list wherever they
 # appear, so they don't interfere with --rebuild's position-sensitive
 # handling below.
-EXTRA_MOUNTS=(); EXTRA_SUMMARY=(); ARGS=(); WORK_RO=
+EXTRA_MOUNTS=(); EXTRA_SUMMARY=(); ARGS=(); WORK_RO=; X11=
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -30,6 +30,9 @@ Options:
                 (either may be repeated, and appear anywhere in the arguments)
   -r            bare, with no SRC/DST: mount $PWD at /work read-only instead
                 of the default read-write (must be the last argument)
+  --x11         let GUI programs (zathura, ...) open windows on the host's X
+                display -- off by default, since X gives every client access to
+                every other one; see the README
   --rebuild     force a rebuild (local mode) or re-pull (lxplus mode)
   -h, --help    show this help and exit
 
@@ -41,6 +44,9 @@ Environment:
 See the README for details.
 EOF
       exit 0
+      ;;
+    --x11)
+      X11=1; shift
       ;;
     -r|-w)
       if [ $# -eq 1 ]; then
@@ -167,18 +173,61 @@ if [ -n "$SSH_AUTH_SOCK" ] && [ -S "$SSH_AUTH_SOCK" ]; then
   SPECIAL_SUMMARY+=("w  $SSH_AUTH_SOCK -> /ssh-agent -- forwarded ssh-agent socket, so git-over-ssh works inside the container; only signing requests cross this socket, your actual private key is never mounted or copied")
 fi
 
+# --- X11 forwarding (opt-in: --x11) ---
+# Off by default, and deliberately so: X has no isolation between clients, so
+# anything in the container can read every other window's contents, log
+# keystrokes from the whole session, read the clipboard, and synthesise input
+# into host windows. None of the mounts below are writable, but that is not what
+# bounds this -- the X connection itself is the hole, which is why it stays off
+# until asked for.
+HOSTNAME_ARG=(--hostname sandbox)
+X11_ARGS=()
+if [ -n "$X11" ]; then
+  [ -n "$DISPLAY" ] || { echo "sandbox: --x11 needs DISPLAY set on the host"; exit 1; }
+  command -v xauth >/dev/null 2>&1 || { echo "sandbox: --x11 needs xauth on the host (apt install xauth / dnf install xorg-x11-xauth)"; exit 1; }
+
+  # Hand in a cookie the container can actually present, rather than the host's
+  # whole Xauthority: copy out the entry for this display only, and rewrite its
+  # address family to FamilyWild (ffff) so it still matches once the client is
+  # calling itself 'sandbox' instead of the host's name.
+  XAUTH_FILE=$HOME/.sandbox-xauth
+  (umask 077 && : > "$XAUTH_FILE")
+  xauth nlist "$DISPLAY" | sed -e 's/^..../ffff/' | xauth -f "$XAUTH_FILE" nmerge - 2>/dev/null || true
+  [ -s "$XAUTH_FILE" ] || echo "sandbox: warning: no X cookie found for $DISPLAY -- GUI programs will only work if the server accepts unauthenticated clients" >&2
+
+  X11_ARGS=(-e DISPLAY="$DISPLAY" -e XAUTHORITY=/tmp/.sandbox-xauth
+            -v "$XAUTH_FILE":/tmp/.sandbox-xauth:ro)
+  MOUNT_SUMMARY+=("r  $XAUTH_FILE -> /tmp/.sandbox-xauth -- the X cookie for $DISPLAY only, not your full Xauthority")
+
+  case "$DISPLAY" in
+    :*|unix:*)
+      X11_ARGS+=(-v /tmp/.X11-unix:/tmp/.X11-unix:ro)
+      SPECIAL_SUMMARY+=("r  /tmp/.X11-unix -> /tmp/.X11-unix -- the X server socket, so GUI programs can open windows on your desktop; read-only as a mount, but X itself lets any client on that socket read other windows' contents and input")
+      ;;
+    *)
+      # An indirect display (ssh -X and friends) is a TCP port on the host's own
+      # loopback, which the container's network namespace doesn't share -- so it
+      # has to use the host's. --hostname is not allowed alongside that.
+      HOSTNAME_ARG=()
+      X11_ARGS+=(--network host)
+      SPECIAL_SUMMARY+=("-  --network host -- $DISPLAY is a forwarded TCP display reachable only from the host's own network namespace, so the container shares it rather than getting its own (and keeps the host's hostname)")
+      ;;
+  esac
+fi
+
 MOUNT_SUMMARY+=("${EXTRA_SUMMARY[@]}")
 echo "sandbox: mounts (r = read-only, w = read-write):"
 printf '  %s\n' "${MOUNT_SUMMARY[@]}"
 echo "sandbox: special mounts:"
 printf '  %s\n' "${SPECIAL_SUMMARY[@]}"
 
-exec docker run --rm $TTY --hostname sandbox \
+exec docker run --rm $TTY "${HOSTNAME_ARG[@]}" \
   -v "$PWD":/work$WORK_RO \
   -v "$RC":/etc/bashrc_sandbox:ro \
   -v "$CLAUDE_MD":/home/"$USER"/.claude/CLAUDE.md:ro \
   "${MODE_ARGS[@]}" \
   "${ROOTRC_MOUNT[@]}" "${NVIM_MOUNT[@]}" "${GITCONFIG_MOUNT[@]}" "${RANGER_MOUNT[@]}" "${SSH_MOUNT[@]}" \
+  "${X11_ARGS[@]}" \
   "${EXTRA_MOUNTS[@]}" \
   -e HOST_USER="$USER" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
   -e TERM="${TERM:-xterm-256color}" \

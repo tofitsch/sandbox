@@ -16,6 +16,9 @@ Options:
                 (either may be repeated, and appear anywhere in the arguments)
   -r            bare, with no SRC/DST: mount $PWD at /work read-only instead
                 of the default read-write (must be the last argument)
+  --x11         let GUI programs (zathura, ...) open windows on the host's X
+                display -- off by default, since X gives every client access to
+                every other one; see the README
   --rebuild     force a rebuild (local mode) or re-pull (lxplus mode)
   -h, --help    show this help and exit
 ```
@@ -42,6 +45,27 @@ there can't (see [Install on lxplus](#install-on-lxplus)) — so it instead pull
   next `sandbox` run); if that agent has no key loaded, `sandbox` explains it's needed for git
   over SSH and prompts for a key path (default `~/.ssh/id_ed25519`, or `no` to skip) and runs
   `ssh-add` on it before starting the container.
+- **X11** — off unless you pass `--x11`. GUI programs like `zathura` are in the image but have no
+  display to draw on by default, so they fail with *cannot open display*. `--x11` mounts the X
+  socket read-only, passes `DISPLAY` through, and hands in a cookie for that display alone —
+  copied out with `xauth nlist` and rewritten to `FamilyWild` so it still matches under the
+  container's hostname. Your real `~/.Xauthority` is never mounted, and `--x11` fails outright if
+  the host has no `DISPLAY` or no `xauth` to mint a cookie with. A forwarded display (`ssh -X`,
+  `DISPLAY=localhost:10.0`) lives on the host's own loopback, which the container's network
+  namespace doesn't share, so that case also adds `--network host` — a further step down in
+  isolation, and it drops the `sandbox` hostname. Both are listed in the mount summary printed at
+  startup.
+
+  **This is the widest hole the sandbox can open, which is why it stays off by default.** X has no
+  isolation between clients: the cookie authorises the connection, not individual operations, so
+  every client is equally privileged once connected. Anything you run with `--x11` can therefore
+  screenshot the whole screen (`XGetImage` on the root window), enumerate every window and its
+  title, read the clipboard and primary selection, log every keystroke in the session regardless
+  of focus (the `RECORD` extension or `XInput2` raw events), and synthesise keystrokes into
+  *other* windows (`XTEST`) — which means typing into a host terminal you have open. The read-only
+  mounts don't bound any of that; the X connection itself is the hole. Use it for a PDF you want
+  to look at, not as a habit. For images specifically, `chafa` in the terminal costs nothing and
+  exposes nothing.
 - **Claude Code rules** — `CLAUDE.md` in this repo is mounted read-only as the container's global
   `~/.claude/CLAUDE.md`, so it applies to Claude Code for any project run inside the sandbox.
 
