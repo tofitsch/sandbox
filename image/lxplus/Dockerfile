@@ -13,6 +13,9 @@ RUN dnf -y install epel-release && \
 
 ENV DISABLE_AUTOUPDATER=1
 
-COPY entrypoint.sh /entrypoint.sh
+COPY common/osc52.vim /usr/share/nvim/osc52.vim
+RUN cat /usr/share/nvim/osc52.vim >> /usr/share/nvim/sysinit.vim
+
+COPY lxplus/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]

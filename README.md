@@ -95,7 +95,9 @@ You'll see `Emulate Docker CLI using podman...` on every `docker` call — cosme
 ## Adding software to the image
 
 Anything installed via `dnf`/`npm`/etc. (as opposed to CVMFS) has to go in the Dockerfile for the
-mode you use — `image/local/Dockerfile`, `image/lxplus/Dockerfile`, or both.
+mode you use — `image/local/Dockerfile`, `image/lxplus/Dockerfile`, or both. `image/common/`
+holds files shared by both Dockerfiles (e.g. `osc52.vim`); both build with `image/` as their
+context so they can `COPY common/...`.
 
 In local mode, `sandbox` builds directly from your checkout:
 
@@ -104,16 +106,17 @@ vim image/local/Dockerfile   # add e.g. `dnf -y install cmake` to the RUN chain
 sandbox                      # picks up the change and rebuilds automatically
 ```
 
-`sandbox` hashes every file under `image/local` and compares it to a label baked into the
-last-built image; a mismatch (or no image at all) triggers a rebuild before the container starts.
+`sandbox` hashes every file under `image/local` and `image/common` and compares it to a label
+baked into the last-built image; a mismatch (or no image at all) triggers a rebuild before the
+container starts.
 `--rebuild` forces one unconditionally — useful to pull a fresh base image — and also works ahead
 of a specific command: `sandbox --rebuild make -j8`. Existing containers aren't affected — only
 the next `sandbox` invocation picks up the new image. The persistent home (`sandbox-home`) and
 CVMFS cache survive a rebuild since they're separate Docker volumes.
 
 lxplus can't build its own image (see [Install on lxplus](#install-on-lxplus)), so
-`image/lxplus/Dockerfile` changes have to be published from a machine with real Docker/podman
-privileges, then pulled:
+`image/lxplus/Dockerfile` (or `image/common`) changes have to be published from a machine with
+real Docker/podman privileges, then pulled:
 
 First-time setup on whichever machine you publish from (once — it adds the `packages` scope to
 your existing `gh` login and hands the resulting token to Docker):

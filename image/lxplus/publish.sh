@@ -7,8 +7,9 @@ set -e
 # lxplus only ever pulls what this script publishes; see `sandbox`.
 IMG=${SANDBOX_IMAGE:-ghcr.io/tofitsch/sandbox:alma9-lxplus}
 DIR=$(dirname "$(readlink -f "$0")")
+IMGDIR=$(dirname "$DIR")
 
-HASH=$(find "$DIR" -type f -exec sha256sum {} + | sort | sha256sum | cut -d' ' -f1)
+HASH=$(find "$DIR" "$IMGDIR/common" -type f -exec sha256sum {} + | sort | sha256sum | cut -d' ' -f1)
 
-docker build --pull --label sandbox.contenthash="$HASH" -t "$IMG" "$DIR"
+docker build --pull --label sandbox.contenthash="$HASH" -t "$IMG" -f "$DIR/Dockerfile" "$IMGDIR"
 docker push "$IMG"

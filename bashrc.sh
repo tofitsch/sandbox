@@ -34,6 +34,17 @@ hl(){
  grep --color -E "^|${1}|"
 }
 
+#copy stdin (or args) to the host system clipboard via OSC 52 -- works through
+#docker/ssh with no display server or socket forwarding, as long as the
+#terminal emulator supports it (e.g. kitty)
+copy(){
+ local data seq
+ if [ $# -gt 0 ]; then data="$*"; else data=$(cat); fi
+ seq="\033]52;c;$(printf '%s' "$data" | base64 | tr -d '\n')\a"
+ if [ -n "$TMUX" ]; then seq="\033Ptmux;\033${seq}\033\\"; fi
+ printf "$seq" > /dev/tty
+}
+
 # use git user name for the scp commands below (assumes it is the same as lxplus login name). Just to have a way to get it automatically
 LXP_USER=`git config user.name`
 

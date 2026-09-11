@@ -68,7 +68,8 @@ if [ "$MODE" = lxplus ]; then DEF_IMG=ghcr.io/tofitsch/sandbox:alma9-lxplus; els
 IMG=${SANDBOX_IMAGE:-$DEF_IMG}
 REPOS=${SANDBOX_CVMFS_REPOS:-"cvmfs-config.cern.ch sft.cern.ch sft-nightlies.cern.ch atlas.cern.ch atlas-condb.cern.ch atlas-nightlies.cern.ch unpacked.cern.ch"}
 DIR=$(dirname "$(readlink -f "$0")")
-CTX=$DIR/image/$MODE
+IMGDIR=$DIR/image
+CTX=$IMGDIR/$MODE
 RC=$DIR/bashrc.sh
 CLAUDE_MD=$DIR/CLAUDE.md
 
@@ -81,12 +82,12 @@ if [ "$MODE" = lxplus ]; then
   docker image inspect "$IMG" >/dev/null 2>&1 || docker pull "$IMG"
   [ "$1" = "--rebuild" ] && { shift; docker pull "$IMG"; [ $# -eq 0 ] && exit 0; }
 else
-  HASH=$(find "$CTX" -type f -exec sha256sum {} + | sort | sha256sum | cut -d' ' -f1)
+  HASH=$(find "$CTX" "$IMGDIR/common" -type f -exec sha256sum {} + | sort | sha256sum | cut -d' ' -f1)
 
-  [ "$1" = "--rebuild" ] && { shift; docker build --pull --label sandbox.contenthash="$HASH" -t "$IMG" "$CTX"; [ $# -eq 0 ] && exit 0; }
+  [ "$1" = "--rebuild" ] && { shift; docker build --pull --label sandbox.contenthash="$HASH" -t "$IMG" -f "$CTX/Dockerfile" "$IMGDIR"; [ $# -eq 0 ] && exit 0; }
 
   CUR_HASH=$(docker image inspect -f '{{ index .Config.Labels "sandbox.contenthash" }}' "$IMG" 2>/dev/null || true)
-  [ "$CUR_HASH" = "$HASH" ] || docker build --label sandbox.contenthash="$HASH" -t "$IMG" "$CTX"
+  [ "$CUR_HASH" = "$HASH" ] || docker build --label sandbox.contenthash="$HASH" -t "$IMG" -f "$CTX/Dockerfile" "$IMGDIR"
 fi
 
 [ "$PWD" = "$HOME" ] && { echo "sandbox: refusing to mount \$HOME as workdir"; exit 1; }
