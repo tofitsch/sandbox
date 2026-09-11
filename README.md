@@ -19,6 +19,13 @@ there can't (see [Install on lxplus](#install-on-lxplus)) — so it instead pull
   image.
 - **Git config** — `~/.gitconfig` from the host is mounted read-only into the container home, if
   present.
+- **SSH** — the host's `ssh-agent` socket is forwarded in, so `git@github.com:...`-style remotes
+  work inside the container. The private key itself is never mounted or copied — only the live
+  agent socket, so the container can ask the host to sign, nothing more. If no agent is running on
+  the host, `sandbox` starts one (persisted at `~/.ssh/sandbox-agent.env` so it's reused by the
+  next `sandbox` run); if that agent has no key loaded, `sandbox` explains it's needed for git
+  over SSH and prompts for a key path (default `~/.ssh/id_ed25519`, or `no` to skip) and runs
+  `ssh-add` on it before starting the container.
 - **Claude Code rules** — `CLAUDE.md` in this repo is mounted read-only as the container's global
   `~/.claude/CLAUDE.md`, so it applies to Claude Code for any project run inside the sandbox.
 

@@ -60,12 +60,42 @@ NVIM_MOUNT=(); [ -d "$HOME/.config/nvim" ] && NVIM_MOUNT=(-v "$HOME/.config/nvim
 GITCONFIG_MOUNT=(); [ -f "$HOME/.gitconfig" ] && GITCONFIG_MOUNT=(-v "$HOME/.gitconfig":/home/"$USER"/.gitconfig:ro)
 RANGER_MOUNT=(); [ -d "$HOME/.config/ranger" ] && RANGER_MOUNT=(-v "$HOME/.config/ranger":/home/"$USER"/.config/ranger:ro)
 
+# --- SSH agent forwarding (never the private key itself) ---
+# ssh-add exit codes: 0 = agent has keys, 1 = agent reachable but empty, 2 = no
+# agent reachable at all. Get to a reachable agent first (reusing whatever's
+# already forwarded, host or a prior sandbox-started one, before starting a
+# new one), then if it's still empty, ask for a key interactively so git
+# inside the container actually has something to authenticate with.
+if command -v ssh-agent >/dev/null 2>&1; then
+  SSH_AGENT_ENV="$HOME/.ssh/sandbox-agent.env"
+  AGENT_RC=0; ssh-add -l >/dev/null 2>&1 || AGENT_RC=$?
+  if [ "$AGENT_RC" -eq 2 ]; then
+    [ -f "$SSH_AGENT_ENV" ] && source "$SSH_AGENT_ENV" >/dev/null
+    AGENT_RC=0; ssh-add -l >/dev/null 2>&1 || AGENT_RC=$?
+    if [ "$AGENT_RC" -eq 2 ]; then
+      mkdir -p -m 700 "$HOME/.ssh"
+      (umask 077 && ssh-agent -s | grep -v '^echo ' > "$SSH_AGENT_ENV") || true
+      [ -s "$SSH_AGENT_ENV" ] && source "$SSH_AGENT_ENV" >/dev/null
+      AGENT_RC=0; ssh-add -l >/dev/null 2>&1 || AGENT_RC=$?
+    fi
+  fi
+  if [ "$AGENT_RC" -eq 1 ] && [ -t 0 ]; then
+    read -rp "sandbox needs a key loaded in the ssh-agent for git over SSH to work in the container -- path to key [$HOME/.ssh/id_ed25519, or 'no' to skip]: " SSH_KEY_PATH
+    SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
+    case "${SSH_KEY_PATH,,}" in
+      no|none|skip|n) ;;
+      *) SSH_KEY_PATH="${SSH_KEY_PATH/#\~/$HOME}"; ssh-add "$SSH_KEY_PATH" || true ;;
+    esac
+  fi
+fi
+SSH_MOUNT=(); [ -n "$SSH_AUTH_SOCK" ] && [ -S "$SSH_AUTH_SOCK" ] && SSH_MOUNT=(-v "$SSH_AUTH_SOCK":/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent)
+
 exec docker run --rm $TTY --hostname sandbox \
   -v "$PWD":/work \
   -v "$RC":/etc/bashrc_sandbox:ro \
   -v "$CLAUDE_MD":/home/"$USER"/.claude/CLAUDE.md:ro \
   "${MODE_ARGS[@]}" \
-  "${ROOTRC_MOUNT[@]}" "${NVIM_MOUNT[@]}" "${GITCONFIG_MOUNT[@]}" "${RANGER_MOUNT[@]}" \
+  "${ROOTRC_MOUNT[@]}" "${NVIM_MOUNT[@]}" "${GITCONFIG_MOUNT[@]}" "${RANGER_MOUNT[@]}" "${SSH_MOUNT[@]}" \
   -e HOST_USER="$USER" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
   -e TERM="${TERM:-xterm-256color}" \
   "$IMG" "$@"
