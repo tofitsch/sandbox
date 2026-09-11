@@ -9,6 +9,60 @@ case "${SANDBOX_MODE:-$(hostname -s)}" in
   *)       MODE=local  ;;
 esac
 
+# Pull -r/-w SRC DST and -h/--help out of the argument list wherever they
+# appear, so they don't interfere with --rebuild's position-sensitive
+# handling below.
+EXTRA_MOUNTS=(); EXTRA_SUMMARY=(); ARGS=(); WORK_RO=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      cat <<'EOF'
+Usage: sandbox [options] [command...]
+
+Drops you into a disposable AlmaLinux 9 container that behaves roughly like
+lxplus: CVMFS available, current directory as the workdir, your real $HOME
+invisible. With no command, starts an interactive shell; otherwise runs the
+given command and exits.
+
+Options:
+  -r SRC DST    mount host directory SRC read-only at DST in the container
+  -w SRC DST    mount host directory SRC read-write at DST in the container
+                (either may be repeated, and appear anywhere in the arguments)
+  -r            bare, with no SRC/DST: mount $PWD at /work read-only instead
+                of the default read-write (must be the last argument)
+  --rebuild     force a rebuild (local mode) or re-pull (lxplus mode)
+  -h, --help    show this help and exit
+
+Environment:
+  SANDBOX_MODE          local|lxplus (default: lxplus on hosts named lxplus*)
+  SANDBOX_IMAGE         override the image to build/pull
+  SANDBOX_CVMFS_REPOS   space-separated CVMFS repos to mount
+
+See the README for details.
+EOF
+      exit 0
+      ;;
+    -r|-w)
+      if [ $# -eq 1 ]; then
+        # bare, no SRC/DST given -- applies to the default /work mount instead
+        [ "$1" = -r ] && WORK_RO=:ro
+        shift
+      else
+        [ $# -ge 3 ] || { echo "sandbox: $1 needs a source directory and a container path"; exit 1; }
+        SRC=$2; DST=$3
+        [ -d "$SRC" ] || { echo "sandbox: no such directory: $SRC"; exit 1; }
+        RO=; [ "$1" = -r ] && RO=:ro
+        SRC=$(readlink -f "$SRC")
+        EXTRA_MOUNTS+=(-v "$SRC":"$DST$RO")
+        EXTRA_SUMMARY+=("$([ -n "$RO" ] && echo r || echo w)  $SRC -> $DST")
+        shift 3
+      fi
+      ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+set -- "${ARGS[@]}"
+
 if [ "$MODE" = lxplus ]; then DEF_IMG=ghcr.io/tofitsch/sandbox:alma9-lxplus; else DEF_IMG=sandbox:alma9; fi
 
 IMG=${SANDBOX_IMAGE:-$DEF_IMG}
@@ -37,6 +91,13 @@ fi
 [ -f "$CLAUDE_MD" ] || { echo "sandbox: missing $CLAUDE_MD"; exit 1; }
 [ -t 0 ] && TTY=-it
 
+MOUNT_SUMMARY=(
+  "$([ -n "$WORK_RO" ] && echo r || echo w)  $PWD -> /work"
+  "r  $RC -> /etc/bashrc_sandbox"
+  "r  $CLAUDE_MD -> ~/.claude/CLAUDE.md"
+)
+SPECIAL_SUMMARY=()
+
 if [ "$MODE" = lxplus ]; then
   # Touch each repo so autofs has it mounted before we take the bind mount --
   # a repo that is not mounted yet on the host will not appear inside.
@@ -48,17 +109,25 @@ if [ "$MODE" = lxplus ]; then
   MODE_ARGS=(-v /cvmfs:/cvmfs:ro,rslave
              -v "$SBHOME":/home/"$USER"
              --security-opt label=disable)
+  SPECIAL_SUMMARY+=(
+    "r  /cvmfs -> /cvmfs -- CERN's CVMFS repositories (software releases, conditions data, etc.), bind-mounted straight from the host; read-only since the host itself only ever mounts them read-only"
+    "w  $SBHOME -> ~/ -- the container's persistent home (Claude Code's login lives here); a real directory inside your actual AFS home, not isolated storage -- see the README's Caveats"
+  )
 else
   MODE_ARGS=(--cap-add SYS_ADMIN --device /dev/fuse --security-opt apparmor=unconfined
              -v sandbox-home:/home/"$USER"
              -v sandbox-cvmfs:/var/lib/cvmfs
              -e CVMFS_REPOS="$REPOS")
+  SPECIAL_SUMMARY+=(
+    "w  sandbox-home (docker volume) -> ~/ -- the container's persistent home (Claude Code's login lives here); isolated Docker-managed storage, not part of your real home"
+    "w  sandbox-cvmfs (docker volume) -> /var/lib/cvmfs -- CVMFS's on-disk cache; the /cvmfs repositories themselves are FUSE-mounted inside the container by the entrypoint, not bind-mounted from the host"
+  )
 fi
 
-ROOTRC_MOUNT=(); [ -f "$HOME/.rootrc" ] && ROOTRC_MOUNT=(-v "$HOME/.rootrc":/home/"$USER"/.rootrc:ro)
-NVIM_MOUNT=(); [ -d "$HOME/.config/nvim" ] && NVIM_MOUNT=(-v "$HOME/.config/nvim":/home/"$USER"/.config/nvim:ro)
-GITCONFIG_MOUNT=(); [ -f "$HOME/.gitconfig" ] && GITCONFIG_MOUNT=(-v "$HOME/.gitconfig":/home/"$USER"/.gitconfig:ro)
-RANGER_MOUNT=(); [ -d "$HOME/.config/ranger" ] && RANGER_MOUNT=(-v "$HOME/.config/ranger":/home/"$USER"/.config/ranger:ro)
+ROOTRC_MOUNT=(); [ -f "$HOME/.rootrc" ] && { ROOTRC_MOUNT=(-v "$HOME/.rootrc":/home/"$USER"/.rootrc:ro); MOUNT_SUMMARY+=("r  $HOME/.rootrc -> ~/.rootrc"); }
+NVIM_MOUNT=(); [ -d "$HOME/.config/nvim" ] && { NVIM_MOUNT=(-v "$HOME/.config/nvim":/home/"$USER"/.config/nvim:ro); MOUNT_SUMMARY+=("r  $HOME/.config/nvim -> ~/.config/nvim"); }
+GITCONFIG_MOUNT=(); [ -f "$HOME/.gitconfig" ] && { GITCONFIG_MOUNT=(-v "$HOME/.gitconfig":/home/"$USER"/.gitconfig:ro); MOUNT_SUMMARY+=("r  $HOME/.gitconfig -> ~/.gitconfig"); }
+RANGER_MOUNT=(); [ -d "$HOME/.config/ranger" ] && { RANGER_MOUNT=(-v "$HOME/.config/ranger":/home/"$USER"/.config/ranger:ro); MOUNT_SUMMARY+=("r  $HOME/.config/ranger -> ~/.config/ranger"); }
 
 # --- SSH agent forwarding (never the private key itself) ---
 # ssh-add exit codes: 0 = agent has keys, 1 = agent reachable but empty, 2 = no
@@ -88,14 +157,25 @@ if command -v ssh-agent >/dev/null 2>&1; then
     esac
   fi
 fi
-SSH_MOUNT=(); [ -n "$SSH_AUTH_SOCK" ] && [ -S "$SSH_AUTH_SOCK" ] && SSH_MOUNT=(-v "$SSH_AUTH_SOCK":/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent)
+SSH_MOUNT=()
+if [ -n "$SSH_AUTH_SOCK" ] && [ -S "$SSH_AUTH_SOCK" ]; then
+  SSH_MOUNT=(-v "$SSH_AUTH_SOCK":/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent)
+  SPECIAL_SUMMARY+=("w  $SSH_AUTH_SOCK -> /ssh-agent -- forwarded ssh-agent socket, so git-over-ssh works inside the container; only signing requests cross this socket, your actual private key is never mounted or copied")
+fi
+
+MOUNT_SUMMARY+=("${EXTRA_SUMMARY[@]}")
+echo "sandbox: mounts (r = read-only, w = read-write):"
+printf '  %s\n' "${MOUNT_SUMMARY[@]}"
+echo "sandbox: special mounts:"
+printf '  %s\n' "${SPECIAL_SUMMARY[@]}"
 
 exec docker run --rm $TTY --hostname sandbox \
-  -v "$PWD":/work \
+  -v "$PWD":/work$WORK_RO \
   -v "$RC":/etc/bashrc_sandbox:ro \
   -v "$CLAUDE_MD":/home/"$USER"/.claude/CLAUDE.md:ro \
   "${MODE_ARGS[@]}" \
   "${ROOTRC_MOUNT[@]}" "${NVIM_MOUNT[@]}" "${GITCONFIG_MOUNT[@]}" "${RANGER_MOUNT[@]}" "${SSH_MOUNT[@]}" \
+  "${EXTRA_MOUNTS[@]}" \
   -e HOST_USER="$USER" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
   -e TERM="${TERM:-xterm-256color}" \
   "$IMG" "$@"

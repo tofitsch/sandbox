@@ -119,10 +119,43 @@ so the Claude Code login is not rebuilt with it.
 
 ```bash
 cd ~/work/myproject
-sandbox                 # interactive shell (builds/pulls the image if it's out of date)
-sandbox make -j8        # run one command
-sandbox --rebuild       # force a rebuild (local) / re-pull (lxplus), e.g. to pick up a new base image
+sandbox                        # interactive shell (builds/pulls the image if it's out of date)
+sandbox make -j8               # run one command
+sandbox --rebuild              # force a rebuild (local) / re-pull (lxplus), e.g. to pick up a new base image
+sandbox -r ~/datasets /data    # also mount ~/datasets read-only at /data
+sandbox -w ~/scratch /scratch  # also mount ~/scratch read-write at /scratch
+sandbox -r                     # mount $PWD at /work read-only instead of the read-write default
 ```
+
+`-r SRC DST` and `-w SRC DST` mount an extra host directory into the container, read-only or
+read-write respectively. They can appear anywhere in the arguments (before or after `--rebuild`,
+before or after a command) and can be repeated for multiple directories. A bare `-r` with no
+SRC/DST (must be the last argument) instead makes the default `/work` mount read-only, since
+`$PWD` is otherwise always mounted read-write. Run `sandbox --help` (or `-h`) for a full option
+summary.
+
+Every run prints exactly what's mounted before starting the container, each line prefixed `r` for
+read-only or `w` for read-write. Mounts with more nuance than a plain bind (CVMFS, the persistent
+home, the forwarded ssh-agent) get their own section with a one-line explanation each, e.g.:
+
+```
+sandbox: mounts (r = read-only, w = read-write):
+  w  /home/tofitsch/work/myproject -> /work
+  r  /home/tofitsch/install/sandbox/bashrc.sh -> /etc/bashrc_sandbox
+  r  /home/tofitsch/install/sandbox/CLAUDE.md -> ~/.claude/CLAUDE.md
+  r  /home/tofitsch/.gitconfig -> ~/.gitconfig
+sandbox: special mounts:
+  w  sandbox-home (docker volume) -> ~/ -- the container's persistent home (Claude Code's login
+     lives here); isolated Docker-managed storage, not part of your real home
+  w  sandbox-cvmfs (docker volume) -> /var/lib/cvmfs -- CVMFS's on-disk cache; the /cvmfs
+     repositories themselves are FUSE-mounted inside the container by the entrypoint, not
+     bind-mounted from the host
+  w  /run/user/1000/keyring/ssh -> /ssh-agent -- forwarded ssh-agent socket, so git-over-ssh works
+     inside the container; only signing requests cross this socket, your actual private key is
+     never mounted or copied
+```
+
+(each entry is actually a single line in the real output; wrapped above only for display.)
 
 Inside, CVMFS works as usual:
 
