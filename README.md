@@ -134,23 +134,3 @@ Commit and push the Dockerfile change too, so `sandbox` on lxplus (which hashes 
 checkout the same way) knows to pull the new image instead of reusing a cached one. The first
 time a package is published, its GHCR visibility defaults to private — set it to public in the
 package's GitHub settings so lxplus can pull without credentials.
-
-## Config
-
-| Variable | Default |
-|---|---|
-| `SANDBOX_MODE` | `lxplus` on hosts named `lxplus*`, else `local` |
-| `SANDBOX_CVMFS_REPOS` | `cvmfs-config.cern.ch sft.cern.ch sft-nightlies.cern.ch atlas.cern.ch atlas-condb.cern.ch atlas-nightlies.cern.ch unpacked.cern.ch` |
-| `SANDBOX_IMAGE` | `sandbox:alma9`, or `ghcr.io/tofitsch/sandbox:alma9-lxplus` in lxplus mode |
-
-Keep `cvmfs-config.cern.ch` first — the others need it to resolve. Override to add or drop repos:
-
-```bash
-SANDBOX_CVMFS_REPOS="cvmfs-config.cern.ch sft.cern.ch" sandbox   # skip atlas.cern.ch
-```
-
-In lxplus mode the repo list is only used to poke autofs on the host before the bind mount is
-taken, since a repo that isn't mounted yet won't appear inside the container.
-
-Reset the persistent home (drops the Claude login): `docker volume rm sandbox-home` in local
-mode, `rm -rf ~/.sandbox-home` on lxplus.
