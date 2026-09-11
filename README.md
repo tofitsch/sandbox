@@ -20,8 +20,6 @@ Options:
   -h, --help    show this help and exit
 ```
 
-It picks the right image for the machine it's on — see [Modes](#modes).
-
 **It works differently depending on where you run it.** On a normal (`local`) machine, `sandbox`
 builds its own image straight from this repo. On `lxplus`, it never builds — rootless podman
 there can't (see [Install on lxplus](#install-on-lxplus)) — so it instead pulls a pre-built image:
@@ -46,37 +44,6 @@ there can't (see [Install on lxplus](#install-on-lxplus)) — so it instead pull
   `ssh-add` on it before starting the container.
 - **Claude Code rules** — `CLAUDE.md` in this repo is mounted read-only as the container's global
   `~/.claude/CLAUDE.md`, so it applies to Claude Code for any project run inside the sandbox.
-
-## Modes
-
-The launcher switches on the hostname: `lxplus*` selects lxplus mode, anything else local mode.
-Force it with `SANDBOX_MODE=local|lxplus`.
-
-| | local | lxplus |
-|---|---|---|
-| Image | `sandbox:alma9`, built locally from `image/local` | `ghcr.io/tofitsch/sandbox:alma9-lxplus`, pulled (never built on lxplus) |
-| CVMFS | client installed in the image, mounted by the entrypoint | host `/cvmfs` bind-mounted read-only |
-| Privileges | `--cap-add SYS_ADMIN --device /dev/fuse` for the FUSE mount | none |
-| User | entrypoint recreates your UID and drops privileges | runs as the container's root, which *is* you |
-| Home | Docker volume `sandbox-home` | `~/.sandbox-home` on AFS |
-| CVMFS cache | Docker volume `sandbox-cvmfs` | the host's |
-
-The user difference is forced: rootless podman on lxplus has no subuid range, so uid 0 is the
-only id mapped into the container and there is nothing to drop privileges *to*. That maps back to
-your account on the host, so files written to `/work` still come out owned by you.
-
-## Layout
-
-```
-sandbox                     # the launcher, goes on your PATH
-bashrc.sh                   # sourced in every container shell — put your aliases here
-CLAUDE.md                   # global Claude Code rules for every project run inside the sandbox
-image/local/Dockerfile      # AlmaLinux 9 + CVMFS + Node + Claude Code
-image/local/entrypoint.sh   # mounts CVMFS, matches your UID, drops privileges
-image/lxplus/Dockerfile     # the same without CVMFS — the host provides it
-image/lxplus/entrypoint.sh  # shell init only
-image/lxplus/publish.sh     # builds and pushes the lxplus image — run off lxplus
-```
 
 ## Install
 
@@ -124,54 +91,6 @@ Then clone and symlink as above ([Install](#install)). `/tmp` is node-local, so 
 on a fresh node; the persistent home lives in `~/.sandbox-home` on AFS instead.
 
 You'll see `Emulate Docker CLI using podman...` on every `docker` call — cosmetic, safe to ignore.
-
-## Use
-
-```bash
-cd ~/work/myproject
-sandbox                        # interactive shell (builds/pulls the image if it's out of date)
-sandbox make -j8               # run one command
-sandbox --rebuild              # force a rebuild (local) / re-pull (lxplus), e.g. to pick up a new base image
-sandbox -r ~/datasets /data    # also mount ~/datasets read-only at /data
-sandbox -w ~/scratch /scratch  # also mount ~/scratch read-write at /scratch
-sandbox -r                     # mount $PWD at /work read-only instead of the read-write default
-```
-
-`-r SRC DST` and `-w SRC DST` mount an extra host directory into the container, read-only or
-read-write respectively. They can appear anywhere in the arguments (before or after `--rebuild`,
-before or after a command) and can be repeated for multiple directories. A bare `-r` with no
-SRC/DST (must be the last argument) instead makes the default `/work` mount read-only, since
-`$PWD` is otherwise always mounted read-write. Run `sandbox --help` (or `-h`) for a full option
-summary.
-
-Every run prints exactly what's mounted before starting the container, each line prefixed `r` for
-read-only or `w` for read-write. Mounts with more nuance than a plain bind (CVMFS, the persistent
-home, the forwarded ssh-agent) get their own section with a one-line explanation each, e.g.:
-
-```
-sandbox: mounts (r = read-only, w = read-write):
-  w  /home/tofitsch/work/myproject -> /work
-  r  /home/tofitsch/install/sandbox/bashrc.sh -> /etc/bashrc_sandbox
-  r  /home/tofitsch/install/sandbox/CLAUDE.md -> ~/.claude/CLAUDE.md
-  r  /home/tofitsch/.gitconfig -> ~/.gitconfig
-sandbox: special mounts:
-  w  sandbox-home (docker volume) -> ~/ -- the container's persistent home (Claude Code's login
-     lives here); isolated Docker-managed storage, not part of your real home
-  w  sandbox-cvmfs (docker volume) -> /var/lib/cvmfs -- CVMFS's on-disk cache; the /cvmfs
-     repositories themselves are FUSE-mounted inside the container by the entrypoint, not
-     bind-mounted from the host
-  w  /run/user/1000/keyring/ssh -> /ssh-agent -- forwarded ssh-agent socket, so git-over-ssh works
-     inside the container; only signing requests cross this socket, your actual private key is
-     never mounted or copied
-```
-
-(each entry is actually a single line in the real output; wrapped above only for display.)
-
-Inside, CVMFS works as usual:
-
-```bash
-source /cvmfs/sft.cern.ch/lcg/views/LCG_106/x86_64-el9-gcc13-opt/setup.sh
-```
 
 ## Adding software to the image
 
@@ -235,16 +154,3 @@ taken, since a repo that isn't mounted yet won't appear inside the container.
 
 Reset the persistent home (drops the Claude login): `docker volume rm sandbox-home` in local
 mode, `rm -rf ~/.sandbox-home` on lxplus.
-
-## Caveats
-
-Local mode's `--cap-add SYS_ADMIN` is required for the FUSE mount. This isolates your files; it
-is not a hard security boundary against code you actively distrust.
-
-Local mode assumes rootful Docker. If your host has `/cvmfs` via autofs but rootful Docker,
-`SANDBOX_MODE=lxplus` gets you the bind mount, but the container then runs as real root and files
-in `/work` will be owned by root.
-
-On lxplus the `vfs` driver stores every layer in full, uncompressed, with no sharing between
-them — the image costs several GB in `/tmp`. Check `df -h /tmp` if a pull dies partway. The home
-on `~/.sandbox-home` counts against your AFS quota, and a long session needs a live AFS token.
