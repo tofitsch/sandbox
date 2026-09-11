@@ -1,5 +1,7 @@
 # sandbox
 
+Provided as-is, with no guarantee of safety or fitness for any purpose. Use at your own risk.
+
 ```
 Usage: sandbox [options] [command...]
 
@@ -98,15 +100,10 @@ copy the script on its own.
 
 ## Install on lxplus
 
-`docker` on lxplus is a shim over rootless podman, and your account has no `/etc/subuid` range —
-the container namespace maps a single id, so anything requiring a second uid/gid fails with
-`lchown`/`chown: invalid argument`. That breaks two different things: *pulling* an image with
-files owned by another uid/gid (e.g. `/usr/bin/write`, setgid `tty`), and *building* one, since a
-live `RUN` step (e.g. `dnf` installing `openssh`, which ships the setuid `ssh-keysign`) hits the
-exact same wall but as a real syscall no storage setting can paper over. The first is fixable by
-switching storage to `vfs` on local disk and telling it to drop ownership it cannot represent; the
-second isn't fixable at all on lxplus, so the lxplus image is never built there — only pulled
-already-built from a registry (see `image/lxplus/publish.sh`).
+`docker` on lxplus is rootless podman with no `/etc/subuid` range, so it can only pull images,
+never build them — the lxplus image is always pulled pre-built (see
+[Adding software](#adding-software-to-the-image)). It also needs `vfs` storage to tolerate file
+ownership it can't remap:
 
 ```bash
 mkdir -p ~/.config/containers
@@ -119,22 +116,14 @@ runroot = "/tmp/$USER/run"
 [storage.options.vfs]
 ignore_chown_errors = "true"
 EOF
-rm -rf /tmp/$USER/containers
+rm -rf /tmp/$USER/containers   # old store blocks the driver switch otherwise
 podman system reset -f
 ```
 
-The `rm -rf` matters: podman records the driver in its database and refuses to switch while the
-old overlay store is still there (`User-selected graph driver "vfs" overwritten by graph driver
-"overlay" from database`). Check it took with `podman info | grep -A2 -i graphdriver`.
+Then clone and symlink as above ([Install](#install)). `/tmp` is node-local, so the image re-pulls
+on a fresh node; the persistent home lives in `~/.sandbox-home` on AFS instead.
 
-Then clone and symlink as above. `/tmp` is node-local and gets cleaned, so the image is re-pulled
-whenever you land on a fresh node — the container home lives in `~/.sandbox-home` on AFS instead,
-so the Claude Code login is not rebuilt with it.
-
-`docker` on lxplus is podman's own wrapper script, which prints `Emulate Docker CLI using podman.
-Create /etc/containers/nodocker to quiet msg.` on every invocation. It's purely cosmetic — it
-costs no time — but the fix it names (`touch /etc/containers/nodocker`) needs root, which lxplus
-accounts don't have, so it can't actually be silenced from a normal account. Safe to ignore.
+You'll see `Emulate Docker CLI using podman...` on every `docker` call — cosmetic, safe to ignore.
 
 ## Use
 
