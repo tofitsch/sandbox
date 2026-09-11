@@ -34,18 +34,17 @@ hl(){
  grep --color -E "^|${1}|"
 }
 
+# use git user name for the scp commands below (assumes it is the same as lxplus login name). Just to have a way to get it automatically
+LXP_USER=`git config user.name`
+
 #download from lxplus
 scpk(){
- scp -2 -r -oGSSAPIAuthentication=yes -oGSSAPIDelegateCredentials=yes -oGSSAPITrustDNS=yes tofitsch@lxplus.cern.ch:$1 $2
+ scp -2 -r -oGSSAPIAuthentication=yes -oGSSAPIDelegateCredentials=yes -oGSSAPITrustDNS=yes ${LXP_USER}@lxplus.cern.ch:$1 $2
 }
 
+#upload to lxplus
 scpkr(){
- scp -2 -r -oGSSAPIAuthentication=yes -oGSSAPIDelegateCredentials=yes -oGSSAPITrustDNS=yes $1 tofitsch@lxplus.cern.ch:$2
-}
-
-#download from lxplus6
-scp8k(){
- scp -2 -r -oGSSAPIAuthentication=yes -oGSSAPIDelegateCredentials=yes -oGSSAPITrustDNS=yes tofitsch@lxplus8.cern.ch:$1 $2
+ scp -2 -r -oGSSAPIAuthentication=yes -oGSSAPIDelegateCredentials=yes -oGSSAPITrustDNS=yes $1 ${LXP_USER}@lxplus.cern.ch:$2
 }
 
 # navigation
