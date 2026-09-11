@@ -131,6 +131,11 @@ Then clone and symlink as above. `/tmp` is node-local and gets cleaned, so the i
 whenever you land on a fresh node — the container home lives in `~/.sandbox-home` on AFS instead,
 so the Claude Code login is not rebuilt with it.
 
+`docker` on lxplus is podman's own wrapper script, which prints `Emulate Docker CLI using podman.
+Create /etc/containers/nodocker to quiet msg.` on every invocation. It's purely cosmetic — it
+costs no time — but the fix it names (`touch /etc/containers/nodocker`) needs root, which lxplus
+accounts don't have, so it can't actually be silenced from a normal account. Safe to ignore.
+
 ## Use
 
 ```bash

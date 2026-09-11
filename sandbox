@@ -74,9 +74,12 @@ CLAUDE_MD=$DIR/CLAUDE.md
 
 if [ "$MODE" = lxplus ]; then
   # lxplus can't build (see image/lxplus/publish.sh) -- it only ever pulls
-  # whatever was last published, so just keep the local copy in sync.
-  docker pull "$IMG"
-  [ "$1" = "--rebuild" ] && { shift; [ $# -eq 0 ] && exit 0; }
+  # whatever was last published. Only actually hit the network if nothing's
+  # cached yet or a pull is explicitly requested -- a pull on every single
+  # invocation just to check for a newer manifest is a real, noticeable delay
+  # on lxplus's path out to the registry.
+  docker image inspect "$IMG" >/dev/null 2>&1 || docker pull "$IMG"
+  [ "$1" = "--rebuild" ] && { shift; docker pull "$IMG"; [ $# -eq 0 ] && exit 0; }
 else
   HASH=$(find "$CTX" -type f -exec sha256sum {} + | sort | sha256sum | cut -d' ' -f1)
 
