@@ -23,7 +23,7 @@ Force it with `SANDBOX_MODE=local|lxplus`.
 
 | | local | lxplus |
 |---|---|---|
-| Image | `sandbox:alma9`, built from `image/local` | `sandbox:alma9-lxplus`, built from `image/lxplus` |
+| Image | `sandbox:alma9`, built locally from `image/local` | `ghcr.io/tofitsch/sandbox:alma9-lxplus`, pulled (never built on lxplus) |
 | CVMFS | client installed in the image, mounted by the entrypoint | host `/cvmfs` bind-mounted read-only |
 | Privileges | `--cap-add SYS_ADMIN --device /dev/fuse` for the FUSE mount | none |
 | User | entrypoint recreates your UID and drops privileges | runs as the container's root, which *is* you |
@@ -44,6 +44,7 @@ image/local/Dockerfile      # AlmaLinux 9 + CVMFS + Node + Claude Code
 image/local/entrypoint.sh   # mounts CVMFS, matches your UID, drops privileges
 image/lxplus/Dockerfile     # the same without CVMFS — the host provides it
 image/lxplus/entrypoint.sh  # shell init only
+image/lxplus/publish.sh     # builds and pushes the lxplus image — run off lxplus
 ```
 
 ## Install
@@ -68,12 +69,15 @@ copy the script on its own.
 
 ## Install on lxplus
 
-`docker` on lxplus is a shim over rootless podman, which needs two fixes before it can build
-anything. Its default fuse-overlayfs backend cannot unpack setuid files, so the `openssh` rpm
-fails; and your account has no `/etc/subuid` range, so the container namespace maps a single id
-and unpacking any file with a non-zero group (`/usr/bin/write` is setgid `tty`) fails with
-`lchown: invalid argument`. Switch storage to `vfs` on local disk and let it drop ownership it
-cannot represent:
+`docker` on lxplus is a shim over rootless podman, and your account has no `/etc/subuid` range —
+the container namespace maps a single id, so anything requiring a second uid/gid fails with
+`lchown`/`chown: invalid argument`. That breaks two different things: *pulling* an image with
+files owned by another uid/gid (e.g. `/usr/bin/write`, setgid `tty`), and *building* one, since a
+live `RUN` step (e.g. `dnf` installing `openssh`, which ships the setuid `ssh-keysign`) hits the
+exact same wall but as a real syscall no storage setting can paper over. The first is fixable by
+switching storage to `vfs` on local disk and telling it to drop ownership it cannot represent; the
+second isn't fixable at all on lxplus, so the lxplus image is never built there — only pulled
+already-built from a registry (see `image/lxplus/publish.sh`).
 
 ```bash
 mkdir -p ~/.config/containers
@@ -94,7 +98,7 @@ The `rm -rf` matters: podman records the driver in its database and refuses to s
 old overlay store is still there (`User-selected graph driver "vfs" overwritten by graph driver
 "overlay" from database`). Check it took with `podman info | grep -A2 -i graphdriver`.
 
-Then clone and symlink as above. `/tmp` is node-local and gets cleaned, so the image is rebuilt
+Then clone and symlink as above. `/tmp` is node-local and gets cleaned, so the image is re-pulled
 whenever you land on a fresh node — the container home lives in `~/.sandbox-home` on AFS instead,
 so the Claude Code login is not rebuilt with it.
 
@@ -102,9 +106,9 @@ so the Claude Code login is not rebuilt with it.
 
 ```bash
 cd ~/work/myproject
-sandbox                 # interactive shell (builds/rebuilds the image if image/ changed)
+sandbox                 # interactive shell (builds/pulls the image if it's out of date)
 sandbox make -j8        # run one command
-sandbox --rebuild       # force a rebuild, e.g. to pick up a new base image
+sandbox --rebuild       # force a rebuild (local) / re-pull (lxplus), e.g. to pick up a new base image
 ```
 
 Inside, CVMFS works as usual:
@@ -118,18 +122,34 @@ source /cvmfs/sft.cern.ch/lcg/views/LCG_106/x86_64-el9-gcc13-opt/setup.sh
 Anything installed via `dnf`/`npm`/etc. (as opposed to CVMFS) has to go in the Dockerfile for the
 mode you use — `image/local/Dockerfile`, `image/lxplus/Dockerfile`, or both.
 
+In local mode, `sandbox` builds directly from your checkout:
+
 ```bash
 vim image/local/Dockerfile   # add e.g. `dnf -y install cmake` to the RUN chain
 sandbox                      # picks up the change and rebuilds automatically
 ```
 
-`sandbox` hashes every file under the mode's image directory and compares it to a label baked
-into the last-built image; a mismatch (or no image at all) triggers a rebuild before the
-container starts. `--rebuild` forces one unconditionally — useful to pull a fresh base image —
-and also works ahead of a specific command: `sandbox --rebuild make -j8`. Existing containers
-aren't affected — only the next `sandbox` invocation picks up the new image. In local mode the
-persistent home (`sandbox-home`) and CVMFS cache survive a rebuild since they're separate Docker
-volumes.
+`sandbox` hashes every file under `image/local` and compares it to a label baked into the
+last-built image; a mismatch (or no image at all) triggers a rebuild before the container starts.
+`--rebuild` forces one unconditionally — useful to pull a fresh base image — and also works ahead
+of a specific command: `sandbox --rebuild make -j8`. Existing containers aren't affected — only
+the next `sandbox` invocation picks up the new image. The persistent home (`sandbox-home`) and
+CVMFS cache survive a rebuild since they're separate Docker volumes.
+
+lxplus can't build its own image (see [Install on lxplus](#install-on-lxplus)), so
+`image/lxplus/Dockerfile` changes have to be published from a machine with real Docker/podman
+privileges, then pulled:
+
+```bash
+vim image/lxplus/Dockerfile      # edit, off lxplus
+docker login ghcr.io             # once, with a token that has write:packages
+image/lxplus/publish.sh          # builds and pushes ghcr.io/tofitsch/sandbox:alma9-lxplus
+```
+
+Commit and push the Dockerfile change too, so `sandbox` on lxplus (which hashes its local
+checkout the same way) knows to pull the new image instead of reusing a cached one. The first
+time a package is published, its GHCR visibility defaults to private — set it to public in the
+package's GitHub settings so lxplus can pull without credentials.
 
 ## Config
 
@@ -137,7 +157,7 @@ volumes.
 |---|---|
 | `SANDBOX_MODE` | `lxplus` on hosts named `lxplus*`, else `local` |
 | `SANDBOX_CVMFS_REPOS` | `cvmfs-config.cern.ch sft.cern.ch sft-nightlies.cern.ch atlas.cern.ch atlas-condb.cern.ch atlas-nightlies.cern.ch unpacked.cern.ch` |
-| `SANDBOX_IMAGE` | `sandbox:alma9`, or `sandbox:alma9-lxplus` in lxplus mode |
+| `SANDBOX_IMAGE` | `sandbox:alma9`, or `ghcr.io/tofitsch/sandbox:alma9-lxplus` in lxplus mode |
 
 Keep `cvmfs-config.cern.ch` first — the others need it to resolve. Override to add or drop repos:
 
@@ -161,5 +181,5 @@ Local mode assumes rootful Docker. If your host has `/cvmfs` via autofs but root
 in `/work` will be owned by root.
 
 On lxplus the `vfs` driver stores every layer in full, uncompressed, with no sharing between
-them — the image costs several GB in `/tmp`. Check `df -h /tmp` if a build dies partway. The home
+them — the image costs several GB in `/tmp`. Check `df -h /tmp` if a pull dies partway. The home
 on `~/.sandbox-home` counts against your AFS quota, and a long session needs a live AFS token.
