@@ -1,8 +1,24 @@
 # sandbox
 
-`sandbox` drops you into a disposable AlmaLinux 9 container that behaves roughly like lxplus:
-CVMFS available, current directory as the workdir, your real `$HOME` invisible. It picks the
-right image for the machine it's on — see [Modes](#modes).
+```
+Usage: sandbox [options] [command...]
+
+Drops you into a disposable AlmaLinux 9 container that behaves roughly like
+lxplus: CVMFS available, current directory as the workdir, your real $HOME
+invisible. With no command, starts an interactive shell; otherwise runs the
+given command and exits.
+
+Options:
+  -r SRC DST    mount host directory SRC read-only at DST in the container
+  -w SRC DST    mount host directory SRC read-write at DST in the container
+                (either may be repeated, and appear anywhere in the arguments)
+  -r            bare, with no SRC/DST: mount $PWD at /work read-only instead
+                of the default read-write (must be the last argument)
+  --rebuild     force a rebuild (local mode) or re-pull (lxplus mode)
+  -h, --help    show this help and exit
+```
+
+It picks the right image for the machine it's on — see [Modes](#modes).
 
 **It works differently depending on where you run it.** On a normal (`local`) machine, `sandbox`
 builds its own image straight from this repo. On `lxplus`, it never builds — rootless podman
