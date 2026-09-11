@@ -4,6 +4,11 @@
 CVMFS available, current directory as the workdir, your real `$HOME` invisible. It picks the
 right image for the machine it's on — see [Modes](#modes).
 
+**It works differently depending on where you run it.** On a normal (`local`) machine, `sandbox`
+builds its own image straight from this repo. On `lxplus`, it never builds — rootless podman
+there can't (see [Install on lxplus](#install-on-lxplus)) — so it instead pulls a pre-built image:
+[`ghcr.io/tofitsch/sandbox:alma9-lxplus`](https://github.com/users/tofitsch/packages/container/package/sandbox).
+
 - **Workdir** — `$PWD` is mounted at `/work`. Files you create there stay owned by you.
 - **Persistent home** — `/home/$USER` survives restarts, so a Claude Code login is done once.
 - **CVMFS** — mounted at container start, or passed through from the host on lxplus.
@@ -140,9 +145,18 @@ lxplus can't build its own image (see [Install on lxplus](#install-on-lxplus)), 
 `image/lxplus/Dockerfile` changes have to be published from a machine with real Docker/podman
 privileges, then pulled:
 
+First-time setup on whichever machine you publish from (once — it adds the `packages` scope to
+your existing `gh` login and hands the resulting token to Docker):
+
+```bash
+gh auth refresh -h github.com -s write:packages
+gh auth token | docker login ghcr.io -u tofitsch --password-stdin
+```
+
+Then, for every Dockerfile change:
+
 ```bash
 vim image/lxplus/Dockerfile      # edit, off lxplus
-docker login ghcr.io             # once, with a token that has write:packages
 image/lxplus/publish.sh          # builds and pushes ghcr.io/tofitsch/sandbox:alma9-lxplus
 ```
 
