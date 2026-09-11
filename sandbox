@@ -58,13 +58,14 @@ fi
 ROOTRC_MOUNT=(); [ -f "$HOME/.rootrc" ] && ROOTRC_MOUNT=(-v "$HOME/.rootrc":/home/"$USER"/.rootrc:ro)
 NVIM_MOUNT=(); [ -d "$HOME/.config/nvim" ] && NVIM_MOUNT=(-v "$HOME/.config/nvim":/home/"$USER"/.config/nvim:ro)
 GITCONFIG_MOUNT=(); [ -f "$HOME/.gitconfig" ] && GITCONFIG_MOUNT=(-v "$HOME/.gitconfig":/home/"$USER"/.gitconfig:ro)
+RANGER_MOUNT=(); [ -d "$HOME/.config/ranger" ] && RANGER_MOUNT=(-v "$HOME/.config/ranger":/home/"$USER"/.config/ranger:ro)
 
 exec docker run --rm $TTY --hostname sandbox \
   -v "$PWD":/work \
   -v "$RC":/etc/bashrc_sandbox:ro \
   -v "$CLAUDE_MD":/home/"$USER"/.claude/CLAUDE.md:ro \
   "${MODE_ARGS[@]}" \
-  "${ROOTRC_MOUNT[@]}" "${NVIM_MOUNT[@]}" "${GITCONFIG_MOUNT[@]}" \
+  "${ROOTRC_MOUNT[@]}" "${NVIM_MOUNT[@]}" "${GITCONFIG_MOUNT[@]}" "${RANGER_MOUNT[@]}" \
   -e HOST_USER="$USER" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
   -e TERM="${TERM:-xterm-256color}" \
   "$IMG" "$@"

@@ -14,8 +14,9 @@ there can't (see [Install on lxplus](#install-on-lxplus)) — so it instead pull
 - **CVMFS** — mounted at container start, or passed through from the host on lxplus.
 - **Shell init** — `bashrc.sh` in this repo is mounted read-only and sourced at every start, so
   edits take effect on the next `sandbox` with no rebuild.
-- **Editor config** — `~/.rootrc` and `~/.config/nvim` from the host are mounted read-only into
-  the container home, if present. Neovim is installed in the image.
+- **Editor config** — `~/.rootrc`, `~/.config/nvim`, and `~/.config/ranger` from the host are
+  mounted read-only into the container home, if present. Neovim and ranger are installed in the
+  image.
 - **Git config** — `~/.gitconfig` from the host is mounted read-only into the container home, if
   present.
 - **Claude Code rules** — `CLAUDE.md` in this repo is mounted read-only as the container's global
