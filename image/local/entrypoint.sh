@@ -16,7 +16,7 @@ CVMFS_HTTP_PROXY=DIRECT
 CVMFS_CACHE_BASE=/var/lib/cvmfs
 CVMFS_QUOTA_LIMIT=20000
 CFG
-mkdir -p /var/lib/cvmfs && chown cvmfs:cvmfs /var/lib/cvmfs
+mkdir -p /var/lib/cvmfs && chown -R cvmfs:cvmfs /var/lib/cvmfs
 for r in $CVMFS_REPOS; do
   mkdir -p "/cvmfs/$r"
   mount -t cvmfs "$r" "/cvmfs/$r" || echo "warning: /cvmfs/$r not mounted" >&2
