@@ -218,6 +218,7 @@ printf '  %s\n' "${MOUNT_SUMMARY[@]}"
 echo "sandbox: special mounts:"
 printf '  %s\n' "${SPECIAL_SUMMARY[@]}"
 
+KEEPALIVE_PID=
 if [ "$MODE" = lxplus ]; then
   # Touch each repo so autofs has it mounted right before we take the bind
   # mount -- a repo that is not mounted yet on the host will not appear
@@ -226,9 +227,20 @@ if [ "$MODE" = lxplus ]; then
   # possible, since anything earlier (the SSH-agent passphrase prompt above,
   # docker pull/build) can easily eat the autofs idle timeout on its own.
   for r in $REPOS; do ls "/cvmfs/$r" >/dev/null 2>&1 || echo "warning: /cvmfs/$r not available on the host" >&2; done
+  # ...and keep touching them in the background for as long as the container
+  # runs: rootless podman's own container creation can itself take long enough
+  # to eat the autofs idle timeout before you ever reach a shell, and a
+  # long-idle interactive session can do the same later on. A repo idle
+  # inside the container isn't enough to keep it mounted on the host, since
+  # only a host-side access resets autofs's timer.
+  ( while sleep "${SANDBOX_CVMFS_KEEPALIVE:-30}"; do
+      for r in $REPOS; do ls "/cvmfs/$r" >/dev/null 2>&1; done
+    done ) &
+  KEEPALIVE_PID=$!
+  trap '[ -n "$KEEPALIVE_PID" ] && kill "$KEEPALIVE_PID" 2>/dev/null' EXIT
 fi
 
-exec docker run --rm $TTY "${HOSTNAME_ARG[@]}" \
+docker run --rm $TTY "${HOSTNAME_ARG[@]}" \
   -v "$PWD":/work$WORK_RO \
   -v "$RC":/etc/bashrc_sandbox:ro \
   -v "$CLAUDE_MD":/home/"$USER"/.claude/CLAUDE.md:ro \
