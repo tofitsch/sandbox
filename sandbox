@@ -109,9 +109,6 @@ MOUNT_SUMMARY=(
 SPECIAL_SUMMARY=()
 
 if [ "$MODE" = lxplus ]; then
-  # Touch each repo so autofs has it mounted before we take the bind mount --
-  # a repo that is not mounted yet on the host will not appear inside.
-  for r in $REPOS; do ls "/cvmfs/$r" >/dev/null 2>&1 || echo "warning: /cvmfs/$r not available on the host" >&2; done
   # /tmp (and with it the container storage) is node-local and gets wiped, so
   # keep the home on AFS instead: the Claude Code login then survives node hops.
   SBHOME=$HOME/.sandbox-home
@@ -220,6 +217,16 @@ echo "sandbox: mounts (r = read-only, w = read-write):"
 printf '  %s\n' "${MOUNT_SUMMARY[@]}"
 echo "sandbox: special mounts:"
 printf '  %s\n' "${SPECIAL_SUMMARY[@]}"
+
+if [ "$MODE" = lxplus ]; then
+  # Touch each repo so autofs has it mounted right before we take the bind
+  # mount -- a repo that is not mounted yet on the host will not appear
+  # inside, and one that's gone idle and been unmounted again can't be
+  # retriggered from inside the container either. Do this as late as
+  # possible, since anything earlier (the SSH-agent passphrase prompt above,
+  # docker pull/build) can easily eat the autofs idle timeout on its own.
+  for r in $REPOS; do ls "/cvmfs/$r" >/dev/null 2>&1 || echo "warning: /cvmfs/$r not available on the host" >&2; done
+fi
 
 exec docker run --rm $TTY "${HOSTNAME_ARG[@]}" \
   -v "$PWD":/work$WORK_RO \
