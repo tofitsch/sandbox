@@ -6,12 +6,13 @@ RUN dnf -y install epel-release && \
     dnf -y install https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest.noarch.rpm && \
     dnf -y install cvmfs cvmfs-config-default && \
     dnf -y module enable nodejs:20 && dnf -y install nodejs npm && \
-    npm install -g @anthropic-ai/claude-code && \
     curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_UNMANAGED_INSTALL=1 sh && \
     curl -fsSL https://pixi.sh/install.sh | env PIXI_HOME=/usr/local PIXI_NO_PATH_UPDATE=1 sh && \
     echo user_allow_other >> /etc/fuse.conf && \
     dnf clean all && npm cache clean --force
 
+# Claude Code is not installed here: bashrc.sh installs it into the persistent
+# home and updates it on every start, so the image never pins a stale version.
 ENV DISABLE_AUTOUPDATER=1
 
 COPY common/osc52.vim /usr/share/nvim/osc52.vim

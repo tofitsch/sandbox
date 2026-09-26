@@ -30,6 +30,10 @@ there can't (see [Install on lxplus](#install-on-lxplus)) — so it instead pull
 
 - **Workdir** — `$PWD` is mounted at `/work`. Files you create there stay owned by you.
 - **Persistent home** — `/home/$USER` survives restarts, so a Claude Code login is done once.
+- **Claude Code always latest** — Claude Code isn't baked into the image. The `claude` function
+  in `bashrc.sh` checks the npm registry every time you start it, and installs or updates into
+  `~/.npm-global` in the persistent home if it's behind. If the registry can't be reached, it
+  starts the installed version anyway. The first start after a fresh home does a full install.
 - **CVMFS** — mounted at container start, or passed through from the host on lxplus.
 - **Shell init** — `bashrc.sh` in this repo is mounted read-only and sourced at every start, so
   edits take effect on the next `sandbox` with no rebuild.

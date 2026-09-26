@@ -21,6 +21,25 @@ export ATLAS_LOCAL_ROOT_BASE=/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase
 export ALRB_localConfigDir=$HOME/.config/atlasLocalRootBase
 alias setupATLAS='source ${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh'
 
+#claude code lives in the persistent home rather than the image, so it survives
+#--rm and rebuilds; every start checks the registry and updates if behind
+export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+case ":$PATH:" in *":$NPM_CONFIG_PREFIX/bin:"*) ;; *) export PATH="$NPM_CONFIG_PREFIX/bin:$PATH" ;; esac
+claude(){
+ local pkg=@anthropic-ai/claude-code latest cur
+ local pj="$NPM_CONFIG_PREFIX/lib/node_modules/$pkg/package.json"
+ latest=$(timeout 15 npm view "$pkg" version 2>/dev/null)
+ [ -f "$pj" ] && cur=$(node -p "require('$pj').version" 2>/dev/null)
+ if [ -z "$latest" ]; then
+  echo "claude: could not reach the npm registry, starting installed version ${cur:-(none)}" >&2
+ elif [ "$cur" != "$latest" ]; then
+  echo "claude: updating ${cur:-(not installed)} -> $latest" >&2
+  npm install -g --no-fund --no-audit "$pkg@$latest" >/dev/null || echo "claude: update failed" >&2
+ fi
+ [ -x "$NPM_CONFIG_PREFIX/bin/claude" ] || { echo "claude: not installed" >&2; return 1; }
+ "$NPM_CONFIG_PREFIX/bin/claude" "$@"
+}
+
 #aliases
 alias vim='nvim'
 alias vdiff='git difftool -t vimdiff'
